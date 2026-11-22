@@ -5,3 +5,7 @@ artifacts
 cache
 hardhat_build/
 play/
+out/
+cache_forge/
+.foundry/
+lib/

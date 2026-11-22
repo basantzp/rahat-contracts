@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: LGPL-3.0
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
 //ERC20 Tokens
 import '@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol';

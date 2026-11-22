@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: LGPL-3.0
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
 import '../../interfaces/IRahatProject.sol';
 
@@ -43,6 +43,12 @@ interface ICVAProject is IRahatProject {
 
   ///@dev Process token request to beneficiary by otp verfication
   function processTokenRequest(address _benAddress, string memory _otp) external;
+
+  function sendBeneficiaryTokenToVendorBatch(
+    address[] calldata _benAddresses,
+    address[] calldata _vendorAddresses,
+    uint256[] calldata _amounts
+  ) external;
 
   function updateOtpServer(address _address) external;
 }

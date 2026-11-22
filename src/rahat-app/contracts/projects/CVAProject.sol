@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: LGPL-3.0
-pragma solidity 0.8.20;
+pragma solidity ^0.8.20;
 
 
 import "@openzeppelin/contracts/metatx/ERC2771Context.sol";
@@ -103,22 +103,24 @@ contract CVAProject is AbstractProject, ICVAProject, ERC2771Context {
   }
 
   function removeBeneficiary(address _address) public onlyUnlocked onlyCommunityAdmin {
-    _removeBeneficiary(_address);
     _assignClaims(_address, 0);
+    _removeBeneficiary(_address);
   }
 
   function _assignClaims(address _beneficiary, uint _amount) private {
-    require(
-      IERC20(defaultToken).balanceOf(address(this)) >= totalClaimsAssgined() + _amount,
-      'not enough tokens'
-    );
-
     uint _origClaimAmt = beneficiaryClaims[_beneficiary];
+    if (_amount > _origClaimAmt) {
+      uint _increase = _amount - _origClaimAmt;
+      require(
+        IERC20(defaultToken).balanceOf(address(this)) >= totalClaimsAssgined() + _increase,
+        'not enough tokens'
+      );
+    }
 
     beneficiaryClaims[_beneficiary] = _amount;
     emit ClaimAssigned(_beneficiary, _amount);
-    int claimDiff = int(_amount - _origClaimAmt);
-    if (claimDiff != 0) emit ClaimAdjusted(_beneficiary, int(_amount - _origClaimAmt));
+    int256 claimDiff = int256(_amount) - int256(_origClaimAmt);
+    if (claimDiff != 0) emit ClaimAdjusted(_beneficiary, claimDiff);
   }
 
   function totalClaimsAssgined() public view returns (uint _totalClaims) {
@@ -227,12 +229,26 @@ contract CVAProject is AbstractProject, ICVAProject, ERC2771Context {
     _transferTokenToClaimer(defaultToken, _benAddress, _vendorAddress, _amount);
   }
 
+  // Batch offline vendor transactions for disaster relief settlements
+  function sendBeneficiaryTokenToVendorBatch(
+    address[] calldata _benAddresses,
+    address[] calldata _vendorAddresses,
+    uint256[] calldata _amounts
+  ) external onlyLocked {
+    require(otpServerAddress == msg.sender, 'unauthorized');
+    uint256 len = _benAddresses.length;
+    require(len == _vendorAddresses.length && len == _amounts.length, 'length mismatch');
+    for (uint256 i = 0; i < len; i++) {
+      _transferTokenToClaimer(defaultToken, _benAddresses[i], _vendorAddresses[i], _amounts[i]);
+    }
+  }
+
   //Patchwork for vendor transaction
   function initiateTokenRequestForVendor(
     address _vendorAddress,
     address _benAddress,
     uint _amount
-    ) public returns(uint requestId){
+  ) public onlyLocked returns(uint requestId) {
     require(beneficiaryClaims[_benAddress] >= _amount, 'not enough balance');
     require(vendorAllowance[_vendorAddress] >= _amount, 'not enough vendor allowance');
 
@@ -246,7 +262,11 @@ contract CVAProject is AbstractProject, ICVAProject, ERC2771Context {
     tokenRequestIds[_vendorAddress][_benAddress] = requestId;
   }
 
-  function processTokenRequestForVendor(address _vendorAddress,address _benAddress, string memory _otp) public {
+  function processTokenRequestForVendor(
+    address _vendorAddress,
+    address _benAddress,
+    string memory _otp
+  ) public onlyLocked {
     IRahatClaim.Claim memory _claim = RahatClaim.processClaim(
       tokenRequestIds[_vendorAddress][_benAddress],
       _otp
@@ -268,6 +288,11 @@ contract CVAProject is AbstractProject, ICVAProject, ERC2771Context {
     require(beneficiaryClaims[_benAddress] >= _amount, 'not enough balace');
     beneficiaryClaims[_benAddress] -= _amount;
     vendorAllowance[_vendorAddress] -= _amount;
+    if (totalVendorAllocation >= _amount) {
+      totalVendorAllocation -= _amount;
+    } else {
+      totalVendorAllocation = 0;
+    }
     require(IERC20(_tokenAddress).transfer(_vendorAddress, _amount), 'transfer failed');
     emit ClaimProcessed(_benAddress, _vendorAddress, _tokenAddress, _amount);
   }
